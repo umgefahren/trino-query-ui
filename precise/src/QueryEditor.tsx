@@ -1,19 +1,36 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { styled } from '@mui/material/styles'
-import { Box, Drawer, useMediaQuery } from '@mui/material'
+import { Box, CircularProgress, Drawer, useMediaQuery } from '@mui/material'
 import CssBaseline from '@mui/material/CssBaseline'
 import MuiAppBar, { AppBarProps as MuiAppBarProps } from '@mui/material/AppBar'
 import { ThemeProvider } from '@mui/material/styles'
+import { v4 as uuidv4 } from 'uuid'
 import QueryCell from './QueryCell'
 import { darkTheme, lightTheme } from './theme'
 import Queries from './schema/Queries'
 import QueryInfo from './schema/QueryInfo'
+import QueryType from './schema/QueryType'
+import QueryTemplate from './schema/QueryTemplate'
+import QueryStorageProvider from './schema/QueryStorageProvider'
+import LocalStorageProvider from './schema/LocalStorageProvider'
 import CatalogViewer from './controls/catalog_viewer/CatalogViewer'
 
 interface IQueryEditor {
+    /** Height of the editor component in pixels. */
     height: number
+    /** Color theme. Follows system preference when not set. */
     theme?: 'dark' | 'light'
+    /** Enable column search in the catalog viewer sidebar. */
     enableCatalogSearchColumns?: boolean
+    /**
+     * Storage provider for query persistence and templates.
+     *
+     * Implement the {@link QueryStorageProvider} interface to plug in a
+     * custom backend (e.g. a REST API). When omitted, a default
+     * {@link LocalStorageProvider} is used which persists queries in the
+     * browser's localStorage and surfaces no templates.
+     */
+    storageProvider?: QueryStorageProvider
 }
 
 const DRAWER_WIDTH = 260
@@ -71,13 +88,60 @@ const AppBar = styled(MuiAppBar, {
     ],
 }))
 
-export const QueryEditor = ({ height, theme, enableCatalogSearchColumns }: IQueryEditor) => {
-    const [queries, setQueries] = useState<Queries>(() => new Queries())
+export const QueryEditor = ({ height, theme, enableCatalogSearchColumns, storageProvider }: IQueryEditor) => {
+    const [queries, setQueries] = useState<Queries | null>(null)
+    const [templates, setTemplates] = useState<QueryTemplate[]>([])
+    const [loading, setLoading] = useState(true)
     const [drawerOpen, setDrawerOpen] = useState<boolean>(true)
-    const [queryRunning, setQueryRunning] = useState<boolean>(false)
-    const [currentQuery, setCurrentQuery] = useState<QueryInfo>(queries.getCurrentQuery())
+    const [currentQuery, setCurrentQuery] = useState<QueryInfo | null>(null)
     const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
     const containerRef = useRef(null)
+
+    // Load queries and templates from the provider asynchronously
+    useEffect(() => {
+        let cancelled = false
+        const provider = storageProvider ?? new LocalStorageProvider()
+
+        async function initialize() {
+            try {
+                const [loadedQueries, loadedTemplates] = await Promise.all([
+                    provider.loadQueries(),
+                    provider.loadTemplates(),
+                ])
+
+                if (cancelled) return
+
+                // Handle query from URL (moved here because the provider is async)
+                const urlParams = new URLSearchParams(window.location.search)
+                const urlQuery = urlParams.get('q')
+                const urlTitle = urlParams.get('n') ?? 'Imported Query'
+                if (urlQuery) {
+                    const imported = new QueryInfo(urlTitle, QueryType.FROM_QUERY_STRING, urlQuery, uuidv4(), false)
+                    loadedQueries.push(imported)
+                    provider.saveQuery(imported).catch((e) => console.error('Error saving imported query:', e))
+                }
+
+                const q = new Queries(provider, loadedQueries)
+                setQueries(q)
+                setTemplates(loadedTemplates)
+                setCurrentQuery(q.getCurrentQuery())
+                setLoading(false)
+            } catch (e) {
+                console.error('Error initializing query editor:', e)
+                if (cancelled) return
+                // Fallback: create an empty Queries instance so the editor remains usable
+                const q = new Queries(provider)
+                setQueries(q)
+                setCurrentQuery(q.getCurrentQuery())
+                setLoading(false)
+            }
+        }
+
+        initialize()
+        return () => {
+            cancelled = true
+        }
+    }, [storageProvider])
 
     const muiThemeToUse = () => {
         if (theme === 'dark') {
@@ -91,6 +155,27 @@ export const QueryEditor = ({ height, theme, enableCatalogSearchColumns }: IQuer
         }
     }
 
+    // Show a spinner while the provider loads
+    if (loading || !queries) {
+        return (
+            <ThemeProvider theme={muiThemeToUse()}>
+                <CssBaseline />
+                <Box
+                    sx={{
+                        border: 1,
+                        borderColor: 'divider',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        height,
+                    }}
+                >
+                    <CircularProgress size={32} />
+                </Box>
+            </ThemeProvider>
+        )
+    }
+
     const applyQueryUpdates = (updates: Partial<QueryInfo>) => {
         const activeQuery = queries.getCurrentQuery()
 
@@ -99,7 +184,7 @@ export const QueryEditor = ({ height, theme, enableCatalogSearchColumns }: IQuer
         }
 
         queries.updateQuery(activeQuery.id, updates)
-        setCurrentQuery((prev) => ({ ...prev, ...updates }))
+        setCurrentQuery((prev) => (prev ? { ...prev, ...updates } : prev))
     }
 
     const setQueryContent = (query: string, catalog?: string, schema?: string) => {
@@ -194,6 +279,7 @@ export const QueryEditor = ({ height, theme, enableCatalogSearchColumns }: IQuer
                 <Main open={drawerOpen} sx={{ p: 0 }}>
                     <QueryCell
                         queries={queries}
+                        templates={templates}
                         drawerOpen={drawerOpen}
                         height={height}
                         onDrawerToggle={() => setDrawerOpen(true)}

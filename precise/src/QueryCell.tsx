@@ -11,6 +11,7 @@ import QueryEditorPane from './QueryEditorPane'
 import ResultSet from './ResultSet'
 import Queries from './schema/Queries'
 import QueryInfo from './schema/QueryInfo'
+import QueryTemplate from './schema/QueryTemplate'
 import AsyncTrinoClient from './AsyncTrinoClient'
 
 const TOOLBAR_HEIGHT = 64
@@ -30,6 +31,8 @@ interface QueryCellState {
 
 interface QueryCellProps {
     queries: Queries
+    /** Query templates to surface in the template menu. */
+    templates: QueryTemplate[]
     drawerOpen: boolean
     height: number
     onDrawerToggle: () => void
@@ -329,6 +332,7 @@ class QueryCell extends React.Component<QueryCellProps, QueryCellState> {
                         onSelectChange={() => {}}
                         onExecute={() => this.Execute()}
                         queries={this.props.queries}
+                        templates={this.props.templates}
                         catalog={currentQuery.catalog}
                         schema={currentQuery.schema}
                         theme={this.props.theme}

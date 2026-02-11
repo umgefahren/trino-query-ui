@@ -6,8 +6,14 @@ abstract class Tabs<T extends TabInfo> {
     protected currentTabId: string
     protected changeListeners: (() => void)[] = []
 
-    constructor() {
-        this.tabs = this.loadTabs()
+    // When initialTabs is provided (async path), loadTabs() is skipped.
+    // When omitted, the original synchronous loadTabs() path is used.
+    constructor(initialTabs?: T[]) {
+        if (initialTabs && initialTabs.length > 0) {
+            this.tabs = initialTabs
+        } else {
+            this.tabs = this.loadTabs()
+        }
         if (this.tabs.length === 0) {
             this.tabs.push(this.createNewTab())
         }

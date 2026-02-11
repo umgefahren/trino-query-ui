@@ -1,4 +1,4 @@
-import React, { Component } from 'react'
+import React, { Component, ReactNode } from 'react'
 import { Box, Divider, IconButton, Tab as MuiTab, Tabs as MuiTabs } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
@@ -9,6 +9,8 @@ import TabInfo from './TabInfo'
 interface EnterpriseTabsProps<T extends TabInfo> {
     tabs: Tabs<T>
     newTabLabel?: string
+    /** Optional extra actions rendered in the tab bar after the overflow menu. */
+    trailingActions?: ReactNode
     onTabChange?: (tabId: string) => void
     onTabCreate?: () => void
     onTabClose?: (tabId: string) => void
@@ -186,7 +188,8 @@ class EnterpriseTabs<T extends TabInfo> extends Component<EnterpriseTabsProps<T>
                             disableRipple
                         />
                     </MuiTabs>
-                    <Box sx={{ ml: 'auto', pr: 1 }}>
+                    <Box sx={{ ml: 'auto', pr: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {this.props.trailingActions}
                         <TabsEllipsesMenu tabs={tabs} onTabSelect={this.handleTabSelectAndPromote} />
                     </Box>
                 </Box>

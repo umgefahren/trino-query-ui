@@ -23,6 +23,8 @@ import Column from './schema/Column'
 import NamedQuery from './sql/NamedQuery'
 import { tokenMap } from './sql/TokenMap'
 import SubstitutionEditor from './SubstitutionEditor'
+import TemplateMenu from './controls/tabs/TemplateMenu'
+import QueryTemplate from './schema/QueryTemplate'
 import { format } from 'sql-formatter'
 
 const TRINO_SQL_LANGUAGE = 'trinosql'
@@ -30,6 +32,8 @@ const TABS_HEIGHT = 64
 
 interface QueryEditorPaneProps {
     queries: Queries
+    /** Query templates to display in the template menu. */
+    templates: QueryTemplate[]
     maxHeight: number
     onQueryChange: (query: string) => void
     onSelectChange: (selectedText: string) => void
@@ -171,6 +175,12 @@ class QueryEditorPane extends React.Component<QueryEditorPaneProps, QueryEditorP
 
     handleTabRename = (id: string, newTitle: string) => {
         this.props.queries.updateQuery(id, { title: newTitle })
+    }
+
+    handleTemplateSelect = (template: QueryTemplate) => {
+        const newQuery = this.props.queries.addQueryFromTemplate(template)
+        monaco.editor.createModel(template.query, TRINO_SQL_LANGUAGE, monaco.Uri.parse(`file:///${newQuery.id}`))
+        this.props.queries.setCurrentQuery(newQuery.id)
     }
 
     handleEditorChange = (newQuery: string | undefined) => {
@@ -875,6 +885,14 @@ class QueryEditorPane extends React.Component<QueryEditorPaneProps, QueryEditorP
             <>
                 <EnterpriseTabs
                     tabs={this.props.queries}
+                    trailingActions={
+                        this.props.templates.length > 0 ? (
+                            <TemplateMenu
+                                templates={this.props.templates}
+                                onTemplateSelect={this.handleTemplateSelect}
+                            />
+                        ) : undefined
+                    }
                     onTabChange={this.handleTabChange}
                     onTabCreate={this.handleTabCreate}
                     onTabClose={this.handleTabClose}

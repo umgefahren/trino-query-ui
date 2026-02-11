@@ -2,8 +2,22 @@ import QueryInfo from './QueryInfo'
 import QueryType from './QueryType'
 import { v4 as uuidv4 } from 'uuid'
 import Tabs from './../controls/tabs/Tabs'
+import QueryStorageProvider from './QueryStorageProvider'
+import QueryTemplate from './QueryTemplate'
 
 class Queries extends Tabs<QueryInfo> {
+    private provider?: QueryStorageProvider
+
+    // When a provider and initialTabs are given, the class delegates
+    // persistence to the provider and skips synchronous loadTabs().
+    // When neither is given, the original localStorage fallback is used.
+    constructor(provider?: QueryStorageProvider, initialTabs?: QueryInfo[]) {
+        super(initialTabs)
+        this.provider = provider
+    }
+
+    // Synchronous fallback — only called when no initialTabs are provided
+    // to the constructor (backward compatibility path).
     loadTabs(): QueryInfo[] {
         const queryList: QueryInfo[] = []
         for (let i = 0; i < localStorage.length; i++) {
@@ -40,26 +54,54 @@ class Queries extends Tabs<QueryInfo> {
             const newQueryId = uuidv4()
             const newQuery = new QueryInfo(title, QueryType.FROM_QUERY_STRING, query, newQueryId, false)
             queryList.push(newQuery)
-            this.saveTab(newQuery)
+            this.saveTabDirect(newQuery)
         }
 
         return queryList
     }
 
     saveTabs(): void {
-        this.tabs.forEach((query) => this.saveTab(query))
+        if (this.provider) {
+            this.tabs.forEach((query) => {
+                this.provider!.saveQuery(query).catch((e) => console.error('Error saving query:', e))
+            })
+        } else {
+            this.tabs.forEach((query) => this.saveTabDirect(query))
+        }
     }
 
-    private saveTab(query: QueryInfo): void {
+    private saveTabDirect(query: QueryInfo): void {
         localStorage.setItem(`query_${query.id}`, JSON.stringify(query))
     }
 
     deleteTabFromStorage(tabId: string): void {
-        localStorage.removeItem(`query_${tabId}`)
+        if (this.provider) {
+            this.provider.deleteQuery(tabId).catch((e) => console.error('Error deleting query:', e))
+        } else {
+            localStorage.removeItem(`query_${tabId}`)
+        }
     }
 
     createNewTab(): QueryInfo {
         return new QueryInfo('New Query', QueryType.USER_ADDED, '', uuidv4(), false)
+    }
+
+    // Create a new query tab from a template
+    addQueryFromTemplate(template: QueryTemplate): QueryInfo {
+        const newQuery = new QueryInfo(
+            template.title,
+            QueryType.FROM_TEMPLATE,
+            template.query,
+            uuidv4(),
+            false,
+            template.catalog,
+            template.schema
+        )
+        this.tabs.push(newQuery)
+        this.currentTabId = newQuery.id
+        this.saveTabs()
+        this.notifyListeners()
+        return newQuery
     }
 
     // Query-specific methods
